@@ -12,8 +12,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('notification_logs', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
+            $table->uuid('tenant_id')->index();
+            $table->string('channel')->index();
+            $table->string('provider');
+            $table->string('recipient');
+            $table->string('status')->default('queued')->index(); // queued, sent, failed
+            $table->json('response')->nullable();
             $table->timestamps();
+
+            // Composite indexes for fast analytical/dashboard queries
+            $table->index(['tenant_id', 'created_at']);
+            $table->index(['tenant_id', 'status']);
         });
     }
 

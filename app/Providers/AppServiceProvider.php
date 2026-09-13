@@ -9,7 +9,9 @@ use App\Contracts\EncryptionServiceInterface;
 use App\Services\Security\LaravelEncryptionService;
 use Illuminate\Encryption\Encrypter;
 use App\Contracts\ApiKeyGeneratorServiceInterface;
-use App\Services\Security\ApiKeyGeneratorService; 
+use App\Services\Security\ApiKeyGeneratorService;
+use App\Contracts\NotificationLogRepositoryInterface;
+use App\Repositories\EloquentNotificationLogRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,7 +21,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(
-            TenantRepositoryInterface::class, 
+            TenantRepositoryInterface::class,
             EloquentTenantRepository::class
         );
 
@@ -34,6 +36,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             ApiKeyGeneratorServiceInterface::class,
             ApiKeyGeneratorService::class
+        );
+
+        $this->app->bind(
+            NotificationLogRepositoryInterface::class,
+            EloquentNotificationLogRepository::class
         );
     }
 
