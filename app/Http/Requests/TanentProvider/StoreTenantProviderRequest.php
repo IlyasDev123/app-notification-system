@@ -15,7 +15,7 @@ class StoreTenantProviderRequest extends FormRequest
     {
         return [
             'channel'       => ['required', 'string', 'in:email,sms,push'],
-            'provider_name' => ['required', 'string', 'in:sendgrid,mailgun,twilio,firebase'],
+            'provider_name' => ['required', 'string', 'in:mailgun,smtp,twilio'],
             'credentials'   => ['required', 'array'],
             'priority'      => ['nullable', 'integer', 'min:1'],
             'is_active'     => ['nullable', 'boolean'],

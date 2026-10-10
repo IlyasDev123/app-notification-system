@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Contracts\TenantProviderRepositoryInterface;
-use App\Contracts\EncryptionServiceInterface;
 use App\Models\TenantProvider;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -11,7 +10,6 @@ class TenantProviderService
 {
     public function __construct(
         private readonly TenantProviderRepositoryInterface $providerRepository,
-        private readonly EncryptionServiceInterface $encryptionService
     ) {}
 
     public function configureProvider(
@@ -22,13 +20,11 @@ class TenantProviderService
         int $priority = 1,
         bool $isActive = true
     ): TenantProvider {
-        // 1. Dynamic Encryption of Sensitive Vendor API Credentials
-        $encryptedCredentials = $this->encryptionService->encryptArray($rawCredentials);
-
-        // 2. Persist Provider Settings via Repository
+        // The TenantProvider model uses encrypted:array cast, so Eloquent handles
+        // encryption automatically. Pass the raw array directly.
         return $this->providerRepository->updateOrCreate($tenantId, $channel, [
             'provider_name' => $providerName,
-            'credentials'   => $encryptedCredentials,
+            'credentials'   => $rawCredentials,
             'priority'      => $priority,
             'is_active'     => $isActive,
         ]);

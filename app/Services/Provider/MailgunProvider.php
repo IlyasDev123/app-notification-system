@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Providers;
+namespace App\Services\Provider;
 
 use App\Contracts\NotificationProviderInterface;
 use Illuminate\Support\Facades\Http;

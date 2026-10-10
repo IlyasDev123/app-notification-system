@@ -1,6 +1,6 @@
 <?php
 
-use App\Contracts\EncryptionServiceInterface;
+use App\Contracts\NotificationLogRepositoryInterface;
 use App\Contracts\NotificationProviderInterface;
 use App\Contracts\TenantProviderRepositoryInterface;
 use App\Models\NotificationLog;
@@ -12,21 +12,21 @@ use Tests\TestCase;
 uses(TestCase::class);
 
 beforeEach(function () {
+    $this->logRepositoryMock      = Mockery::mock(NotificationLogRepositoryInterface::class);
     $this->providerRepositoryMock = Mockery::mock(TenantProviderRepositoryInterface::class);
-    $this->encryptionServiceMock = Mockery::mock(EncryptionServiceInterface::class);
-    $this->providerFactoryMock = Mockery::mock(NotificationProviderFactory::class);
-    $this->providerDriverMock = Mockery::mock(NotificationProviderInterface::class);
+    $this->providerFactoryMock    = Mockery::mock(NotificationProviderFactory::class);
+    $this->providerDriverMock     = Mockery::mock(NotificationProviderInterface::class);
 
     $this->service = new NotificationEngineService(
+        $this->logRepositoryMock,
         $this->providerRepositoryMock,
-        $this->encryptionServiceMock,
         $this->providerFactoryMock
     );
 
-    $this->tenantId = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
-    $this->channel = 'email';
+    $this->tenantId  = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
+    $this->channel   = 'email';
     $this->recipient = 'user@example.com';
-    $this->content = 'Your verification code is 123456';
+    $this->content   = 'Your verification code is 123456';
 });
 
 afterEach(function () {
@@ -34,53 +34,56 @@ afterEach(function () {
 });
 
 it('dispatches a notification successfully through the resolved provider driver', function () {
-    $providerName = 'mailgun';
-    $encryptedCredentials = 'eyJpdiI6IlhYWCIsInZhbHVlIjoiWVlZIiwibWFjIjoiWlpaIn0=';
+    $providerName        = 'mailgun';
     $decryptedCredentials = ['api_key' => 'key-12345', 'domain' => 'mg.example.com'];
-    $options = ['subject' => 'Welcome to LifeLedger'];
+    $options             = ['subject' => 'Welcome'];
 
-    $tenantProviderModel = (new TenantProvider())->forceFill([
+    // Build a TenantProvider whose credentials will be returned as an array
+    $tenantProviderModel = new TenantProvider();
+    $tenantProviderModel->forceFill([
         'id'            => 'provider-uuid-1',
         'tenant_id'     => $this->tenantId,
         'channel'       => $this->channel,
         'provider_name' => $providerName,
-        'credentials'   => $encryptedCredentials,
         'is_active'     => true,
     ]);
+    // Set credentials through the cast so decrypt works when engine reads it
+    $tenantProviderModel->credentials = $decryptedCredentials;
 
-    $providerResponse = [
-        'success'    => true,
-        'message_id' => 'mailgun-msg-1234',
-        'status'     => 'sent',
-    ];
+    $providerResponse = ['success' => true, 'message_id' => 'mailgun-msg-1234', 'status' => 200];
 
-    // 1. Assert repository lookup for channel & tenant
+    $expectedLog = new NotificationLog();
+    $expectedLog->forceFill([
+        'tenant_id' => $this->tenantId,
+        'channel'   => $this->channel,
+        'provider'  => $providerName,
+        'recipient' => $this->recipient,
+        'status'    => 'sent',
+        'response'  => $providerResponse,
+    ]);
+
     $this->providerRepositoryMock
         ->shouldReceive('findByTenantAndChannel')
         ->once()
         ->with($this->tenantId, $this->channel)
         ->andReturn($tenantProviderModel);
 
-    // 2. Assert decryption of provider credentials
-    $this->encryptionServiceMock
-        ->shouldReceive('decryptArray')
-        ->once()
-        ->with($encryptedCredentials)
-        ->andReturn($decryptedCredentials);
-
-    // 3. Assert factory makes the correct driver
     $this->providerFactoryMock
         ->shouldReceive('make')
         ->once()
         ->with($providerName)
         ->andReturn($this->providerDriverMock);
 
-    // 4. Assert driver sends payload
     $this->providerDriverMock
         ->shouldReceive('send')
         ->once()
         ->with($this->recipient, $this->content, $decryptedCredentials, $options)
         ->andReturn($providerResponse);
+
+    $this->logRepositoryMock
+        ->shouldReceive('log')
+        ->once()
+        ->andReturn($expectedLog);
 
     $log = $this->service->dispatch(
         $this->tenantId,
@@ -106,18 +109,20 @@ it('throws exception when no provider exists for tenant and channel', function (
         ->with($this->tenantId, $this->channel)
         ->andReturnNull();
 
-    expect(function () {
-        $this->service->dispatch(
-            $this->tenantId,
-            $this->channel,
-            $this->recipient,
-            $this->content
-        );
-    })->toThrow(Exception::class, "No active provider configured for tenant [{$this->tenantId}] on channel [{$this->channel}].");
+    expect(fn () => $this->service->dispatch(
+        $this->tenantId,
+        $this->channel,
+        $this->recipient,
+        $this->content
+    ))->toThrow(
+        RuntimeException::class,
+        "No active provider configured for tenant [{$this->tenantId}] on channel [{$this->channel}]."
+    );
 });
 
 it('throws exception when configured provider is inactive', function () {
-    $inactiveTenantProvider = (new TenantProvider())->forceFill([
+    $inactiveTenantProvider = new TenantProvider();
+    $inactiveTenantProvider->forceFill([
         'id'            => 'provider-uuid-2',
         'tenant_id'     => $this->tenantId,
         'channel'       => $this->channel,
@@ -131,12 +136,13 @@ it('throws exception when configured provider is inactive', function () {
         ->with($this->tenantId, $this->channel)
         ->andReturn($inactiveTenantProvider);
 
-    expect(function () {
-        $this->service->dispatch(
-            $this->tenantId,
-            $this->channel,
-            $this->recipient,
-            $this->content
-        );
-    })->toThrow(Exception::class, "No active provider configured for tenant [{$this->tenantId}] on channel [{$this->channel}].");
+    expect(fn () => $this->service->dispatch(
+        $this->tenantId,
+        $this->channel,
+        $this->recipient,
+        $this->content
+    ))->toThrow(
+        RuntimeException::class,
+        "No active provider configured for tenant [{$this->tenantId}] on channel [{$this->channel}]."
+    );
 });

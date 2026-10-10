@@ -3,18 +3,19 @@
 namespace App\Services;
 
 use App\Contracts\NotificationLogRepositoryInterface;
+use App\Contracts\TenantProviderRepositoryInterface;
 use App\Models\NotificationLog;
+use RuntimeException;
 use Throwable;
 
 class NotificationEngineService
 {
     public function __construct(
-        protected NotificationLogRepositoryInterface $logRepository
+        protected NotificationLogRepositoryInterface $logRepository,
+        protected TenantProviderRepositoryInterface $providerRepository,
+        protected NotificationProviderFactory $providerFactory,
     ) {}
 
-    /**
-     * Dispatch notification through provider and persist audit log.
-     */
     public function dispatch(
         string $tenantId,
         string $channel,
@@ -22,16 +23,25 @@ class NotificationEngineService
         string $content,
         array $options = []
     ): NotificationLog {
-        $provider = $options['provider'] ?? $this->resolveDefaultProvider($channel);
+        $tenantProvider = $this->providerRepository->findByTenantAndChannel($tenantId, $channel);
+
+        if (! $tenantProvider || ! $tenantProvider->is_active) {
+            throw new RuntimeException(
+                "No active provider configured for tenant [{$tenantId}] on channel [{$channel}]."
+            );
+        }
+
+        $providerName  = $options['provider'] ?? $tenantProvider->provider_name;
+        $credentials   = $tenantProvider->credentials; // auto-decrypted by encrypted:array cast
 
         try {
-            // Simulated delivery call to provider strategy/client
-            $responsePayload = $this->sendViaProvider($provider, $channel, $recipient, $content, $options);
+            $provider        = $this->providerFactory->make($providerName);
+            $responsePayload = $provider->send($recipient, $content, $credentials, $options);
 
             return $this->logRepository->log([
                 'tenant_id' => $tenantId,
                 'channel'   => $channel,
-                'provider'  => $provider,
+                'provider'  => $providerName,
                 'recipient' => $recipient,
                 'status'    => 'sent',
                 'response'  => $responsePayload,
@@ -40,7 +50,7 @@ class NotificationEngineService
             $this->logRepository->log([
                 'tenant_id' => $tenantId,
                 'channel'   => $channel,
-                'provider'  => $provider,
+                'provider'  => $providerName,
                 'recipient' => $recipient,
                 'status'    => 'failed',
                 'response'  => ['error' => $e->getMessage()],
@@ -48,29 +58,5 @@ class NotificationEngineService
 
             throw $e;
         }
-    }
-
-    protected function resolveDefaultProvider(string $channel): string
-    {
-        return match ($channel) {
-            'email' => 'mailgun',
-            'sms'   => 'twilio',
-            'push'  => 'fcm',
-            default => 'system',
-        };
-    }
-
-    protected function sendViaProvider(
-        string $provider,
-        string $channel,
-        string $recipient,
-        string $content,
-        array $options
-    ): array {
-        return [
-            'status'        => 'delivered',
-            'message_id'    => 'msg_' . bin2hex(random_bytes(8)),
-            'provider_used' => $provider,
-        ];
     }
 }

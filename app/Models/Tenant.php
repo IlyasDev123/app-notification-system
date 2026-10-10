@@ -26,7 +26,7 @@ class Tenant extends Model
 
     public function apiKeys(): HasMany
     {
-        return $table = $this->hasMany(TenantApiKey::class);
+        return $this->hasMany(TenantApiKey::class);
     }
 
     public function providers(): HasMany

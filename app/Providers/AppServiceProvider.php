@@ -12,6 +12,10 @@ use App\Contracts\ApiKeyGeneratorServiceInterface;
 use App\Services\Security\ApiKeyGeneratorService;
 use App\Contracts\NotificationLogRepositoryInterface;
 use App\Repositories\EloquentNotificationLogRepository;
+use App\Contracts\TenantApiKeyRepositoryInterface;
+use App\Repositories\EloquentTenantApiKeyRepository;
+use App\Contracts\TenantProviderRepositoryInterface;
+use App\Repositories\EloquentTenantProviderRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -41,6 +45,16 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             NotificationLogRepositoryInterface::class,
             EloquentNotificationLogRepository::class
+        );
+
+        $this->app->bind(
+            TenantApiKeyRepositoryInterface::class,
+            EloquentTenantApiKeyRepository::class
+        );
+
+        $this->app->bind(
+            TenantProviderRepositoryInterface::class,
+            EloquentTenantProviderRepository::class
         );
     }
 

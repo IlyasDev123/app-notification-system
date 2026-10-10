@@ -1,6 +1,5 @@
 <?php
 
-use App\Contracts\EncryptionServiceInterface;
 use App\Contracts\TenantProviderRepositoryInterface;
 use App\Models\TenantProvider;
 use App\Services\TenantProviderService;
@@ -11,52 +10,41 @@ uses(TestCase::class);
 
 beforeEach(function () {
     $this->providerRepositoryMock = Mockery::mock(TenantProviderRepositoryInterface::class);
-    $this->encryptionServiceMock = Mockery::mock(EncryptionServiceInterface::class);
 
-    $this->service = new TenantProviderService(
-        $this->providerRepositoryMock,
-        $this->encryptionServiceMock
-    );
+    $this->service = new TenantProviderService($this->providerRepositoryMock);
 
-    $this->tenantId = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
+    $this->tenantId   = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
     $this->providerId = 'provider-uuid-1234';
-    $this->channel = 'email';
+    $this->channel    = 'email';
 });
 
 afterEach(function () {
     Mockery::close();
 });
 
-it('configures a tenant provider with encrypted credentials successfully', function () {
-    $providerName = 'mailgun';
-    $rawCredentials = ['api_key' => 'key-12345', 'domain' => 'mg.example.com'];
-    $encryptedCredentialsString = 'eyJpdiI6IlhYWCIsInZhbHVlIjoiWVlZIiwibWFjIjoiWlpaIn0=';
-    $priority = 1;
-    $isActive = true;
+it('configures a tenant provider and passes raw credentials to the repository', function () {
+    $providerName    = 'mailgun';
+    $rawCredentials  = ['api_key' => 'key-12345', 'domain' => 'mg.example.com'];
+    $priority        = 1;
+    $isActive        = true;
 
-    // Use forceFill so primary key 'id' isn't blocked by $fillable protection
     $expectedModel = (new TenantProvider())->forceFill([
         'id'            => $this->providerId,
         'tenant_id'     => $this->tenantId,
         'channel'       => $this->channel,
         'provider_name' => $providerName,
-        'credentials'   => $encryptedCredentialsString,
         'priority'      => $priority,
         'is_active'     => $isActive,
     ]);
 
-    $this->encryptionServiceMock
-        ->shouldReceive('encryptArray')
-        ->once()
-        ->with($rawCredentials)
-        ->andReturn($encryptedCredentialsString);
-
+    // Credentials are passed as raw array — the model's encrypted:array cast
+    // handles encryption, no manual encryption in the service layer.
     $this->providerRepositoryMock
         ->shouldReceive('updateOrCreate')
         ->once()
         ->with($this->tenantId, $this->channel, [
             'provider_name' => $providerName,
-            'credentials'   => $encryptedCredentialsString,
+            'credentials'   => $rawCredentials,
             'priority'      => $priority,
             'is_active'     => $isActive,
         ])
